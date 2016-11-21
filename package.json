@@ -1,0 +1,27 @@
+{
+  "name": "javascript-optimizer",
+  "version": "1.0.0",
+  "description": "JavaScript Optimizer",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/qsctr/javascript-optimizer.git"
+  },
+  "author": "qsctr",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/qsctr/javascript-optimizer/issues"
+  },
+  "homepage": "https://github.com/qsctr/javascript-optimizer#readme",
+  "dependencies": {
+    "@types/escodegen": "0.0.6",
+    "@types/esprima": "^2.1.33",
+    "@types/estree": "0.0.34",
+    "@types/node": "^6.0.48",
+    "escodegen": "^1.8.1",
+    "esprima": "^3.1.1"
+  }
+}

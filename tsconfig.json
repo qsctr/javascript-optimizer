@@ -1,0 +1,19 @@
+{
+    "compilerOptions": {
+        "target": "es6",
+        "module": "commonjs",
+        "noImplicitAny": true,
+        "suppressImplicitAnyIndexErrors": true,
+        "noImplicitReturns": true,
+        "strictNullChecks": true,
+        "noImplicitThis": true,
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "noEmitOnError": true,
+        "inlineSourceMap": true,
+        "inlineSources": true,
+        "rootDir": "./src",
+        "outDir": "./out",
+        "lib": ["es2015", "es2016.array.include"]
+    }
+}
