@@ -1,18 +1,36 @@
-import * as AST from 'estree';
+import { Syntax } from 'esprima';
+import { Node } from 'estree';
+import { Optimization } from './optimizations';
 
-export default (node: AST.Node, optimize: (node: AST.Node) => void) =>
-    (function search(node: AST.Node) {
-        optimize(node);
+export default (node: Node, optimize: Optimization) =>
+    (function search(node: Node) {
+        while (true) {
+            const result = optimize(node);
+            if (!result) break;
+            const [{ loc }, message] = result;
+            if (!loc) continue;
+            console.log(`line ${loc.start.line} col ${loc.start.column} to line ${loc.end.line} col ${loc.end.column}: ${message}`);
+        }
         for (const property in node) {
             if (node.hasOwnProperty(property)) {
-                if (node[property].hasOwnProperty('type')) {
-                    search(node[property]);
+                const child = node[property];
+                if (isNode(child)) {
+                    search(child);
                 }
-                if (Array.isArray(node[property])
-                && node[property].length > 0
-                && node[property][0].hasOwnProperty('type')) {
-                    node[property].forEach(search);
+                if (Array.isArray(child) && child.length && isNode(child[0])) {
+                    child.forEach(search);
                 }
             }
         }
     })(node);
+
+function isNode(object: Object) {
+    if (object.hasOwnProperty('type')) {
+        for (const type in Syntax) {
+            if ((object as { type: string }).type === type) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
