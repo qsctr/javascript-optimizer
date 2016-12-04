@@ -1,8 +1,24 @@
-import { Node, BlockStatement, FunctionDeclaration } from 'estree';
-import Optimization from './optimization';
-import { loopChildren } from './search';
+import { Node, Identifier } from 'estree';
+import {
+    search,
+    removeFromBlockIf,
+    removeFromFunctionBlockIf,
+    replaceChildIf,
+    getBlock,
+    getFunctionBlock,
+    isPureExpression,
+    remove,
+    sliceRemove,
+    print
+} from './utils';
 
-export const optimizations: { [name: string]: Optimization } = {
+export type Optimization = (node: Node) => Action;
+
+export const enum Action {
+    Stop, Continue
+}
+
+const optimizations: { [name: string]: Optimization } = {
 
     emptyStatements: removeFromBlockIf(
         stmt => stmt.type === 'EmptyStatement',
@@ -39,111 +55,51 @@ export const optimizations: { [name: string]: Optimization } = {
                 print(remove(block, -1), 'Useless return, removed');
             }
         }
-        return true;
+        return Action.Continue;
     },
 
-    deadFunction: (node: Node) => {
-        const block = getFunctionBlock(node);
+    variableShadowing: (node: Node) => {
+        const block = getBlock(node);
         if (block) {
-            for (const stmt of block) {
-                if (stmt.type === 'FunctionDeclaration'
-                && !block.some(function called(child: Node) {
-                    if ((child.type === 'CallExpression' || child.type === 'NewExpression')
-                    && child.callee.type === 'Identifier'
-                    && child.callee.name === stmt.id.name) {
-                        return true;
+            for (let i = 0; i < block.length; i++) {
+                const stmt = block[i];
+                if (stmt.type === 'VariableDeclaration') {
+                    for (const stmt1 of sliceRemove(block, i)) {
+                        if (search(child => {
+                            if (child.type === 'VariableDeclaration' && child.declarations.some(inner =>
+                                inner.id.type === 'Identifier' && stmt.declarations.some(outer =>
+                                    outer.id.type === 'Identifier'
+                                    && outer.id.name === (inner.id as Identifier).name))) {
+                                return Action.Stop;
+                            }
+                            return Action.Continue;
+                        })(stmt1) === Action.Stop) {
+                            
+                            return Action.Stop;
+                        }
                     }
-                })) {
-                    
                 }
             }
         }
-    }
+    },
 
-    // esprima already checks for invalid return
-    // invalidReturn: (node: Node) => {
-    //     if (isBlockFunction(node)) {
-    //         return false;
-    //     }
-    //     const block = getBlock(node);
-    //     if (block) {
-    //         for (const stmt of block) {
-    //             if (stmt.type === 'ReturnStatement') {
-    //                 print(stmt, 'Invalid return statement');
-    //             }
-    //         }
-    //     }
-    //     return true;
-    // }
+    deadFunction: removeFromFunctionBlockIf(
+        (stmt, i, block) => stmt.type === 'FunctionDeclaration'
+            && sliceRemove(block, i).some(stmt1 => search(child => {
+                if (child.type === 'Identifier' && child.name === stmt.id.name) {
+                    return Action.Stop;
+                }
+                return Action.Continue;
+            })(stmt1) === Action.Stop),
+        'Unreferenced function, removed'
+    ),
+
+    deadVar: removeFromFunctionBlockIf(
+        (stmt, i, block) => stmt.type === 'VariableDeclaration' && stmt.kind === 'var'
+            && bl,
+        'Unreferenced function-scoped variable, removed'
+    )
 
 };
 
-function getBlock(node: Node) {
-    switch (node.type) {
-        case 'Program':
-        case 'BlockStatement':
-            return node.body;
-        case 'SwitchCase': // meta switch case
-            return node.consequent;
-    }
-    return null;
-}
-
-function removeFromBlockIf(pred: (node: Node) => boolean, message: string): Optimization {
-    return node => {
-        const block = getBlock(node);
-        if (block) {
-            for (let i = 0; i < block.length;) {
-                if (pred(block[i])) {
-                    print(remove(block, i), message);
-                } else {
-                    i++;
-                }
-            }
-        }
-        return true;
-    };
-}
-
-function replaceChildIf(pred: (node: Node) => boolean, newChild: Node, message: string): Optimization {
-    return node => {
-        loopChildren(node, child => {
-            if (pred(child)) {
-                print(child, message);
-                return newChild;
-            }
-        });
-        return true;
-    };
-}
-
-function isBlockFunction(node: Node) {
-    return node.type === 'FunctionDeclaration'
-        || node.type === 'FunctionExpression'
-        || (node.type === 'ArrowFunctionExpression' && node.body.type === 'BlockStatement');
-}
-
-function getFunctionBlock(node: Node) {
-    if (isBlockFunction(node)) {
-        return (node as { body: BlockStatement }).body.body;
-    }
-    return null;
-}
-
-function isPureExpression(node: Node) {
-    return node.type === 'ThisExpression'
-        || node.type === 'Literal'
-        || node.type === 'Identifier';
-}
-
-function remove(arr: Node[], i: number) {
-    return arr.splice(i, 1)[0];
-}
-
-function print({ loc }: Node, message: string) {
-    if (loc) {
-        console.log(`line ${loc.start.line} col ${loc.start.column} to line ${loc.end.line} col ${loc.end.column}: ${message}`);
-    } else {
-        console.log(`<no location info>: ${message}`);
-    }
-}
+export default optimizations;

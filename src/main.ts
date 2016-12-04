@@ -1,7 +1,7 @@
 import * as escodegen from 'escodegen';
 import * as esprima from 'esprima';
-import { optimizations } from './optimizations';
-import search from './search';
+import optimizations from './optimizations';
+import { search } from './utils';
 
 const testProgram = `
     'use strict';
@@ -18,6 +18,18 @@ const testProgram = `
         'hello';
     };;;
     f();
+    (function () {
+        function abc() {
+            console.log('hi');
+            abc();
+        }
+        'hello world!';
+        return;
+    })();
+    const x = 5;
+    x = 10;
+    let y = 5;
+    let y = 10;
 `
 
 const ast = esprima.parse(testProgram, {
@@ -25,7 +37,7 @@ const ast = esprima.parse(testProgram, {
 });
 
 for (const optimization in optimizations) {
-    search(ast, optimizations[optimization]);
+    search(optimizations[optimization])(ast);
 }
 
 console.log(escodegen.generate(ast));

@@ -4,7 +4,7 @@
         "module": "commonjs",
         "noImplicitAny": true,
         "suppressImplicitAnyIndexErrors": true,
-        "noImplicitReturns": true,
+        // "noImplicitReturns": true,
         "strictNullChecks": true,
         "noImplicitThis": true,
         "noUnusedLocals": true,
