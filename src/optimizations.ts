@@ -1,13 +1,28 @@
-import { Node, BlockStatement } from 'estree';
-import { loopChildren } from './utils';
-
-export type Optimization = (node: Node) => boolean;
+import { Node, BlockStatement, FunctionDeclaration } from 'estree';
+import Optimization from './optimization';
+import { loopChildren } from './search';
 
 export const optimizations: { [name: string]: Optimization } = {
 
     emptyStatements: removeFromBlockIf(
         stmt => stmt.type === 'EmptyStatement',
         'Empty statement, removed'
+    ),
+
+    production: removeFromBlockIf(
+        stmt => stmt.type === 'DebuggerStatement',
+        'Debugger statement, removed'
+    ),
+
+    voidOperator: replaceChildIf(
+        node => node.type === 'UnaryExpression'
+            && node.operator === 'void'
+            && isPureExpression(node.argument),
+        {
+            type: 'Identifier',
+            name: 'undefined'
+        },
+        'Replaced void expression with undefined'
     ),
 
     uselessStatements: removeFromBlockIf(
@@ -21,40 +36,45 @@ export const optimizations: { [name: string]: Optimization } = {
             const last = block[block.length - 1];
             if (last.type === 'ReturnStatement' && (!last.argument
             || (last.argument.type === 'Identifier' && last.argument.name === 'undefined'))) {
-                return [remove(block, -1), 'Useless return, removed'];
+                print(remove(block, -1), 'Useless return, removed');
             }
         }
         return true;
     },
 
-    voidOperator: (node: Node) => {
-
-        if (node.type === 'ExpressionStatement'
-        && node.expression.type === 'UnaryExpression'
-        && node.expression.operator === 'void'
-        && isPureExpression(node.expression.argument)) {
-            node.expression = {
-                type: 'Identifier',
-                name: 'undefined'
-            };
-            return 
-        }
-    },
-
-    invalidReturn: (node: Node) => {
-        if (isBlockFunction(node)) {
-            return false;
-        }
-        const block = getBlock(node);
+    deadFunction: (node: Node) => {
+        const block = getFunctionBlock(node);
         if (block) {
             for (const stmt of block) {
-                if (stmt.type === 'ReturnStatement') {
-                    return [stmt, 'Invalid return statement'];
+                if (stmt.type === 'FunctionDeclaration'
+                && !block.some(function called(child: Node) {
+                    if ((child.type === 'CallExpression' || child.type === 'NewExpression')
+                    && child.callee.type === 'Identifier'
+                    && child.callee.name === stmt.id.name) {
+                        return true;
+                    }
+                })) {
+                    
                 }
             }
         }
-        return true;
     }
+
+    // esprima already checks for invalid return
+    // invalidReturn: (node: Node) => {
+    //     if (isBlockFunction(node)) {
+    //         return false;
+    //     }
+    //     const block = getBlock(node);
+    //     if (block) {
+    //         for (const stmt of block) {
+    //             if (stmt.type === 'ReturnStatement') {
+    //                 print(stmt, 'Invalid return statement');
+    //             }
+    //         }
+    //     }
+    //     return true;
+    // }
 
 };
 
@@ -89,11 +109,12 @@ function replaceChildIf(pred: (node: Node) => boolean, newChild: Node, message: 
     return node => {
         loopChildren(node, child => {
             if (pred(child)) {
+                print(child, message);
                 return newChild;
             }
         });
         return true;
-    }
+    };
 }
 
 function isBlockFunction(node: Node) {
@@ -110,7 +131,9 @@ function getFunctionBlock(node: Node) {
 }
 
 function isPureExpression(node: Node) {
-    return ['ThisExpression', 'Literal', 'Identifier'].includes(node.type);
+    return node.type === 'ThisExpression'
+        || node.type === 'Literal'
+        || node.type === 'Identifier';
 }
 
 function remove(arr: Node[], i: number) {
