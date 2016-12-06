@@ -1,15 +1,28 @@
-import { Node, Identifier } from 'estree';
+import {
+    ExpressionStatement,
+    FunctionDeclaration,
+    Identifier,
+    Node,
+    UnaryExpression,
+    VariableDeclaration,
+    VariableDeclarator
+} from 'estree';
 import {
     search,
     removeFromBlockIf,
     removeFromFunctionBlockIf,
+    removeFromDeclarationsIf,
     replaceChildIf,
+    noReferencesTo,
     getBlock,
     getFunctionBlock,
     isPureExpression,
+    showPureExpression,
+    isFunction,
     remove,
     sliceRemove,
-    print
+    print,
+    formatLoc
 } from './utils';
 
 export type Optimization = (node: Node) => Action;
@@ -22,12 +35,14 @@ const optimizations: { [name: string]: Optimization } = {
 
     emptyStatements: removeFromBlockIf(
         stmt => stmt.type === 'EmptyStatement',
-        'Empty statement, removed'
+        'Empty statement, removed',
+        true
     ),
 
-    production: removeFromBlockIf(
+    debugger: removeFromBlockIf(
         stmt => stmt.type === 'DebuggerStatement',
-        'Debugger statement, removed'
+        '"debugger" statement, removed',
+        true
     ),
 
     voidOperator: replaceChildIf(
@@ -38,12 +53,19 @@ const optimizations: { [name: string]: Optimization } = {
             type: 'Identifier',
             name: 'undefined'
         },
-        'Replaced void expression with undefined'
+        (node: UnaryExpression) =>
+            `Replaced "void ${showPureExpression(node.argument)}" with undefined`,
+        true
     ),
 
     uselessStatements: removeFromBlockIf(
-        stmt => stmt.type === 'ExpressionStatement' && isPureExpression(stmt.expression),
-        'Useless statement, removed'
+        stmt => stmt.type === 'ExpressionStatement'
+            && isPureExpression(stmt.expression)
+            && !(stmt.expression.type === 'Literal'
+                && stmt.expression.value === 'use strict'),
+        (stmt: ExpressionStatement) =>
+            `Useless statement "${showPureExpression(stmt.expression)};", removed`,
+        true
     ),
 
     uselessReturn: (node: Node) => {
@@ -52,7 +74,7 @@ const optimizations: { [name: string]: Optimization } = {
             const last = block[block.length - 1];
             if (last.type === 'ReturnStatement' && (!last.argument
             || (last.argument.type === 'Identifier' && last.argument.name === 'undefined'))) {
-                print(remove(block, -1), 'Useless return, removed');
+                print(remove(block, -1), 'Useless return, removed', true);
             }
         }
         return Action.Continue;
@@ -65,39 +87,65 @@ const optimizations: { [name: string]: Optimization } = {
                 const stmt = block[i];
                 if (stmt.type === 'VariableDeclaration') {
                     for (const stmt1 of sliceRemove(block, i)) {
-                        if (search(child => {
-                            if (child.type === 'VariableDeclaration' && child.declarations.some(inner =>
-                                inner.id.type === 'Identifier' && stmt.declarations.some(outer =>
-                                    outer.id.type === 'Identifier'
-                                    && outer.id.name === (inner.id as Identifier).name))) {
-                                return Action.Stop;
+                        search(child => {
+                            if (child.type === 'VariableDeclaration') {
+                                for (const inner of child.declarations) {
+                                    if (inner.id.type === 'Identifier') {
+                                        checkOuter(inner.id);
+                                    }
+                                }
+                            } else if (isFunction(child)) {
+                                for (const inner of child.params) {
+                                    if (inner.type === 'Identifier') {
+                                        checkOuter(inner);
+                                    }
+                                }
+                                if (child.type === 'FunctionDeclaration'
+                                || (child.type === 'FunctionExpression' && child.id)) {
+                                    checkOuter((child as { id: Identifier }).id);
+                                }
+                            }
+                            function checkOuter(inner: Identifier) {
+                                for (const outer of
+                                (stmt as VariableDeclaration).declarations) {
+                                    if (outer.id.type === 'Identifier'
+                                    && outer.id.name === inner.name) {
+                                        print(inner, `Declaration of ${inner.name} is shadowing declaration at ${formatLoc(outer)}`, false);
+                                    }
+                                }
                             }
                             return Action.Continue;
-                        })(stmt1) === Action.Stop) {
-                            
-                            return Action.Stop;
-                        }
+                        })(stmt1);
                     }
                 }
             }
         }
+        return Action.Continue;
     },
 
     deadFunction: removeFromFunctionBlockIf(
         (stmt, i, block) => stmt.type === 'FunctionDeclaration'
-            && sliceRemove(block, i).some(stmt1 => search(child => {
-                if (child.type === 'Identifier' && child.name === stmt.id.name) {
-                    return Action.Stop;
-                }
-                return Action.Continue;
-            })(stmt1) === Action.Stop),
-        'Unreferenced function, removed'
+            && noReferencesTo(stmt.id, sliceRemove(block, i)),
+        (func: FunctionDeclaration) => `Unreferenced function ${func.id.name}, removed`,
+        true
     ),
 
     deadVar: removeFromFunctionBlockIf(
-        (stmt, i, block) => stmt.type === 'VariableDeclaration' && stmt.kind === 'var'
-            && bl,
-        'Unreferenced function-scoped variable, removed'
+        (stmt, i, block) => {
+            if (stmt.type === 'VariableDeclaration' && stmt.kind === 'var') {
+                removeFromDeclarationsIf(
+                    (declarator: VariableDeclarator, j: number, declarations: VariableDeclarator[]) =>
+                        declarator.id.type === 'Identifier'
+                        && noReferencesTo(declarator.id,
+                            sliceRemove(block, i).concat(sliceRemove(declarations, j))),
+                    (declarator: VariableDeclarator) =>
+                        `Unreferenced variable ${(declarator.id as Identifier).name}, removed`,
+                    true
+                )(stmt);
+                return stmt.declarations.length === 0;
+            }
+            return false;
+        }
     )
 
 };
