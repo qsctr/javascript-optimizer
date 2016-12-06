@@ -80,6 +80,31 @@ const optimizations: { [name: string]: Optimization } = {
         return Action.Continue;
     },
 
+    deadFunction: removeFromFunctionBlockIf(
+        (stmt, i, block) => stmt.type === 'FunctionDeclaration'
+            && noReferencesTo(stmt.id, sliceRemove(block, i)),
+        (func: FunctionDeclaration) => `Unreferenced function ${func.id.name}, removed`,
+        true
+    ),
+
+    deadVar: removeFromFunctionBlockIf(
+        (stmt, i, block) => {
+            if (stmt.type === 'VariableDeclaration' && stmt.kind === 'var') {
+                removeFromDeclarationsIf(
+                    (declarator: VariableDeclarator, j: number, declarations: VariableDeclarator[]) =>
+                        declarator.id.type === 'Identifier'
+                        && noReferencesTo(declarator.id,
+                            sliceRemove(block, i).concat(sliceRemove(declarations, j))),
+                    (declarator: VariableDeclarator) =>
+                        `Unreferenced variable ${(declarator.id as Identifier).name}, removed`,
+                    true
+                )(stmt);
+                return stmt.declarations.length === 0;
+            }
+            return false;
+        }
+    ),
+
     variableShadowing: (node: Node) => {
         const block = getBlock(node);
         if (block) {
@@ -121,32 +146,7 @@ const optimizations: { [name: string]: Optimization } = {
             }
         }
         return Action.Continue;
-    },
-
-    deadFunction: removeFromFunctionBlockIf(
-        (stmt, i, block) => stmt.type === 'FunctionDeclaration'
-            && noReferencesTo(stmt.id, sliceRemove(block, i)),
-        (func: FunctionDeclaration) => `Unreferenced function ${func.id.name}, removed`,
-        true
-    ),
-
-    deadVar: removeFromFunctionBlockIf(
-        (stmt, i, block) => {
-            if (stmt.type === 'VariableDeclaration' && stmt.kind === 'var') {
-                removeFromDeclarationsIf(
-                    (declarator: VariableDeclarator, j: number, declarations: VariableDeclarator[]) =>
-                        declarator.id.type === 'Identifier'
-                        && noReferencesTo(declarator.id,
-                            sliceRemove(block, i).concat(sliceRemove(declarations, j))),
-                    (declarator: VariableDeclarator) =>
-                        `Unreferenced variable ${(declarator.id as Identifier).name}, removed`,
-                    true
-                )(stmt);
-                return stmt.declarations.length === 0;
-            }
-            return false;
-        }
-    )
+    }
 
 };
 

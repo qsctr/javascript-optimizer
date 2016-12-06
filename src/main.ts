@@ -1,6 +1,6 @@
 import { generate } from 'escodegen';
 import { parse } from 'esprima';
-import { readFileSync, /* writeFileSync */ } from 'fs';
+import { readFileSync, writeFileSync } from 'fs';
 import optimizations from './optimizations';
 import { FixedState, getFixedState, search } from './utils';
 
@@ -17,8 +17,7 @@ for (const filename of process.argv.slice(2)) {
             try {
                 const newFile = generate(ast);
                 try {
-                    // writeFileSync(filename, newFile);
-                    console.log(newFile);
+                    writeFileSync(filename, newFile);
                 } catch (err) {
                     console.log(`Unable to write to file ${filename}: ${err}`);
                 }
